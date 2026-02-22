@@ -1,5 +1,5 @@
 {
-  "domain": "whisper.cpp api",
+  "domain": "whisper_api_stt",
   "name": "Home Assistant: Whisper.cpp API",
   "codeowners": [
     "@NW15D"
