@@ -1,14 +1,14 @@
 {
-  "domain": "whisper_api_stt",
-  "name": "OpenAI Whisper API STT",
+  "domain": "whisper.cpp api",
+  "name": "Home Assistant: Whisper.cpp API",
   "codeowners": [
-    "@davidohne"
+    "@NW15D"
   ],
   "dependencies": [],
-  "documentation": "https://github.com/davidohne/ha_whisper-api_stt/",
+  "documentation": "https://github.com/NW15D/home_assitant_whisper.cpp/",
   "iot_class": "local_polling",
   "integration_type": "helper",
-  "issue_tracker": "https://github.com/davidohne/ha_whisper-api_stt/issues",
+  "issue_tracker": "https://github.com/NW15D/home_assitant_whisper.cpp/issues",
   "requirements": [],
-  "version": "0.1.1"
+  "version": "0.9"
 }
