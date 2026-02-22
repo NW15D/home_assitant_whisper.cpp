@@ -23,7 +23,7 @@ from homeassistant.components.stt import (
     SpeechResult,
     SpeechResultState,
 )
-from homeassistant.const import CONF_LANGUAGE, CONF_NAME, CONF_TEMPERATURE, CONF_URL
+from homeassistant.const import CONF_LANGUAGE, CONF_NAME
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
