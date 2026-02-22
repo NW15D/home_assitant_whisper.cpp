@@ -1,12 +1,17 @@
 r"""
 Support for Whisper API STT.
 """
-from typing import AsyncIterable
-import aiohttp
+from __future__ import annotations
+
+import logging
 import os
 import tempfile
+import wave
+from typing import AsyncIterable
+
+import aiohttp
 import voluptuous as vol
-from homeassistant.components.tts import CONF_LANG
+
 from homeassistant.components.stt import (
     AudioBitRates,
     AudioChannels,
@@ -18,37 +23,40 @@ from homeassistant.components.stt import (
     SpeechResult,
     SpeechResultState,
 )
+from homeassistant.const import CONF_LANG
 from homeassistant.core import HomeAssistant
-import homeassistant.helpers.config_validation as cv
-import wave
-import io
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+_LOGGER = logging.getLogger(__name__)
 
-CONF_API_KEY = 'api_key'
-DEFAULT_LANG = 'en-US'
-CONF_MODEL = 'model'
-CONF_URL = 'server_url'
-CONF_PROMPT = 'prompt'
-CONF_TEMPERATURE = 'temperature'
+CONF_API_KEY = "api_key"
+DEFAULT_LANG = "en-US"
+CONF_MODEL = "model"
+CONF_URL = "server_url"
+CONF_PROMPT = "prompt"
+CONF_TEMPERATURE = "temperature"
+
+OPENAI_STT_URL = "https://api.openai.com/v1/audio/transcriptions"
 
 PLATFORM_SCHEMA = cv.PLATFORM_SCHEMA.extend({
-    vol.Required(CONF_API_KEY): cv.string,
+    vol.Optional(CONF_API_KEY, default=""): cv.string,
     vol.Optional(CONF_LANG, default=DEFAULT_LANG): cv.string,
-    vol.Optional(CONF_MODEL, default='whisper-1'): cv.string,
-    vol.Optional(CONF_URL, default=None): cv.string,
-    vol.Optional(CONF_PROMPT, default=None): cv.string,
-    vol.Optional(CONF_TEMPERATURE, default=0): cv.positive_int,
+    vol.Optional(CONF_MODEL, default="whisper-1"): cv.string,
+    vol.Optional(CONF_URL, default=OPENAI_STT_URL): cv.string,
+    vol.Optional(CONF_PROMPT): cv.string,
+    vol.Optional(CONF_TEMPERATURE, default=0.0): vol.Coerce(float),
 })
 
 
-async def async_get_engine(hass, config, discovery_info=None):
+async def async_get_engine(hass: HomeAssistant, config: dict, discovery_info=None):
     """Set up Whisper API STT speech component."""
-    api_key = config[CONF_API_KEY]
+    api_key = config.get(CONF_API_KEY)
     language = config.get(CONF_LANG, DEFAULT_LANG)
     model = config.get(CONF_MODEL)
-    url = config.get('server_url')
-    prompt = config.get('prompt')
-    temperature = config.get('temperature')
+    url = config.get(CONF_URL)
+    prompt = config.get(CONF_PROMPT)
+    temperature = config.get(CONF_TEMPERATURE)
     return OpenAISTTProvider(hass, api_key, language, model, url, prompt, temperature)
 
 
@@ -73,7 +81,7 @@ class OpenAISTTProvider(Provider):
     @property
     def supported_languages(self) -> list[str]:
         """Return the list of supported languages."""
-        return self._language.split(',')
+        return [self._language]
 
     @property
     def supported_formats(self) -> list[AudioFormats]:
@@ -100,48 +108,72 @@ class OpenAISTTProvider(Provider):
         """Return a list of supported channels."""
         return [AudioChannels.CHANNEL_MONO]
 
-    async def async_process_audio_stream(self, metadata: SpeechMetadata, stream: AsyncIterable[bytes]) -> SpeechResult:
-        data = b''
+    async def async_process_audio_stream(
+        self, metadata: SpeechMetadata, stream: AsyncIterable[bytes]
+    ) -> SpeechResult:
+        """Process an audio stream to text."""
+        data = b""
         async for chunk in stream:
             data += chunk
 
         if not data:
+            _LOGGER.error("Received empty audio stream")
             return SpeechResult("", SpeechResultState.ERROR)
 
+        temp_file_path = None
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
-                with wave.open(temp_file, 'wb') as wav_file:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
+                temp_file_path = temp_file.name
+                with wave.open(temp_file_path, "wb") as wav_file:
                     wav_file.setnchannels(metadata.channel)
-                    wav_file.setsampwidth(2)  # 2 bytes per sample
+                    wav_file.setsampwidth(2)  # 16-bit PCM
                     wav_file.setframerate(metadata.sample_rate)
                     wav_file.writeframes(data)
-                temp_file_path = temp_file.name
 
+            # OpenAI expects ISO-639-1 (e.g. 'en')
+            lang_iso = self._language.split("-")[0].split("_")[0]
 
-            url = self._url or OPENAI_STT_URL
+            headers = {}
+            if self._api_key:
+                headers["Authorization"] = f"Bearer {self._api_key}"
 
-            headers = {
-                'Authorization': f'Bearer {self._api_key}',
-            }
-
-            file_to_send = open(temp_file_path, 'rb')
             form = aiohttp.FormData()
-            form.add_field('file', file_to_send, filename='audio.wav', content_type='audio/wav')
-            form.add_field('language', self._language)
-            form.add_field('model', self._model)
+            form.add_field("model", self._model)
+            form.add_field("language", lang_iso)
+            if self._prompt:
+                form.add_field("prompt", self._prompt)
+            form.add_field("temperature", str(self._temperature))
+            
+            # Open file for reading to send
+            with open(temp_file_path, "rb") as audio_file:
+                form.add_field(
+                    "file", audio_file, filename="audio.wav", content_type="audio/wav"
+                )
 
-            async with aiohttp.ClientSession() as session:
-                async with session.post(url, data=form, headers=headers) as response:
-                    if response.status == 200:
-                        json_response = await response.json()
-                        return SpeechResult(json_response["text"], SpeechResultState.SUCCESS)
-                    else:
-                        text = await response.text()
+                session = async_get_clientsession(self.hass)
+                async with session.post(
+                    self._url, data=form, headers=headers, timeout=60
+                ) as response:
+                    if response.status != 200:
+                        error_text = await response.text()
+                        _LOGGER.error(
+                            "Error from Whisper API (status %s): %s",
+                            response.status,
+                            error_text,
+                        )
                         return SpeechResult("", SpeechResultState.ERROR)
-        except Exception as e:
+
+                    json_response = await response.json()
+                    text = json_response.get("text", "")
+                    return SpeechResult(text, SpeechResultState.SUCCESS)
+
+        except Exception as err:
+            _LOGGER.exception("Error processing audio stream: %s", err)
             return SpeechResult("", SpeechResultState.ERROR)
         finally:
-            if 'file_to_send' in locals():
-                file_to_send.close()
-            if temp_file_path:
-                os.remove(temp_file_path)
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.remove(temp_file_path)
+                except Exception as err:
+                    _LOGGER.warning("Could not remove temporary file %s: %s", temp_file_path, err)
+

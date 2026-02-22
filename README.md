@@ -1,44 +1,48 @@
-# Home Assistant: Whisper API Integration von Speech-to-Text
+# Home Assistant: Whisper API Integration for Speech-to-Text
 
 Integration works for Assist pipelines. 
 
 ### Requirements:
 - Installed Whisper.cpp server in network
 
-1.Git pull whisper.cpp
+### Server setup (whisper.cpp):
+1. Git pull [whisper.cpp](https://github.com/ggerganov/whisper.cpp)
+2. Build the server (example for CUDA):
+```bash
+cmake -B build -DGGML_CUDA=1
+cmake --build build --config Release
+```
 
-my config for Tesla P40 or use just cmake -B build  -DGGML_CUDA=1 -DGGML_CCACHE=OFF
+3. Run the server:
+```bash
+./ai/whisper.cpp/build/bin/whisper-server -m /ai/models/whisper/ggml-large-v3-turbo-q8_0.bin --host 192.168.0.55 --port 5045 -l ru  -sow -sns --vad --vad-model /ai/models/whisper/ggml-silero-v6.2.0.bin --inference-path /v1/audio/transcriptions
 
-2.cmake -B build  -DGGML_CUDA_FORCE_MMQ=1 -DCMAKE_CUDA_ARCHITECTURES=61 -DGGML_CUDA=1 -DGGML_F16C=OFF -DGGML_AVX512=OFF -DGGML_AVX2=OFF -DGGML_FMA=OFF -DGGML_CCACHE=OFF
-
-3.cmake --build build --config Release
-
-run 
-./build/bin/server -m /ai/models/whisper/ggml-large-v3-q5_0.bin --host 192.168.0.55 --port 5005 -l en -fa
+```
 
 ### Configuration:
 
-Remarks:
-- Add your own server_url
-- language MUST be set AND has to be ISO-639-1 format
-- There will be an error in the home assistant logs, that configuring stt is not allowed in configuration.yaml - you can ignore this
+Add to your `configuration.yaml`:
 
-configuration.yaml:
-
-
-```
+```yaml
 stt:
   - platform: whisper_api_stt
-    api_key: "a132b20c-96be-467f-a15a-ed08aed67345"
-    server_url: "http://192.168.0.176:9000/v1/audio/transcriptions"
+    server_url: "http://192.168.0.55:5045/v1/audio/transcriptions"
     model: "whisper-1"
     language: "ru-RU"
-    temperature: "0.5"
-
+    temperature: 0.0
 ```
+
+#### Parameters:
+- `server_url` (Optional): URL of your whisper.cpp or OpenAI-compatible server. Defaults to OpenAI API.
+- `api_key` (Optional): API key if required by your server.
+- `model` (Optional): Model name. Defaults to `whisper-1`.
+- `language` (Optional): Language code (e.g., `en-US`, `ru-RU`).
+- `temperature` (Optional): Sampling temperature between 0 and 1. Defaults to `0.0`.
+- `prompt` (Optional): Optional text to guide the model's style.
+
+### Notes:
+- The integration converts the language code to ISO-639-1 (e.g., `ru-RU` -> `ru`) for API compatibility.
+- Ensure your `server_url` includes the full path to the endpoint, e.g., `/v1/audio/transcriptions`.
 
 ### Used sources + thanks to:
 - sfortis/openai_tts: https://github.com/sfortis/openai_tts
-
-
-up!
