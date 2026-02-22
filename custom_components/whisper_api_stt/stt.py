@@ -23,7 +23,7 @@ from homeassistant.components.stt import (
     SpeechResult,
     SpeechResultState,
 )
-from homeassistant.const import CONF_LANG
+from homeassistant.const import CONF_LANGUAGE, CONF_NAME, CONF_TEMPERATURE, CONF_URL
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -37,11 +37,11 @@ CONF_URL = "server_url"
 CONF_PROMPT = "prompt"
 CONF_TEMPERATURE = "temperature"
 
-OPENAI_STT_URL = "https://api.openai.com/v1/audio/transcriptions"
+OPENAI_STT_URL = "http://192.168.0.55:5005/v1/audio/transcriptions"
 
 PLATFORM_SCHEMA = cv.PLATFORM_SCHEMA.extend({
     vol.Optional(CONF_API_KEY, default=""): cv.string,
-    vol.Optional(CONF_LANG, default=DEFAULT_LANG): cv.string,
+    vol.Optional(CONF_LANGUAGE, default=DEFAULT_LANG): cv.string,
     vol.Optional(CONF_MODEL, default="whisper-1"): cv.string,
     vol.Optional(CONF_URL, default=OPENAI_STT_URL): cv.string,
     vol.Optional(CONF_PROMPT): cv.string,
@@ -52,7 +52,7 @@ PLATFORM_SCHEMA = cv.PLATFORM_SCHEMA.extend({
 async def async_get_engine(hass: HomeAssistant, config: dict, discovery_info=None):
     """Set up Whisper API STT speech component."""
     api_key = config.get(CONF_API_KEY)
-    language = config.get(CONF_LANG, DEFAULT_LANG)
+    language = config.get(CONF_LANGUAGE, DEFAULT_LANG)
     model = config.get(CONF_MODEL)
     url = config.get(CONF_URL)
     prompt = config.get(CONF_PROMPT)
